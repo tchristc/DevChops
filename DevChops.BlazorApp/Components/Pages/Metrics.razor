@@ -1,0 +1,229 @@
+@page "/metrics"
+@using DevChops.Application.DTOs
+@attribute [Authorize]
+@inject ResourceGroupService ResourceGroupService
+@inject MetricsQueryService MetricsQueryService
+@inject ISnackbar Snackbar
+
+<PageTitle>Metrics – DevChops</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">App Service Plan Metrics</MudText>
+
+<!-- Controls -->
+<MudPaper Elevation="1" Class="pa-4 mb-4">
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudSelect T="string" @bind-SelectedValues="_selectedPlanIds"
+                       MultiSelection="true" Label="App Service Plans"
+                       Variant="Variant.Outlined" Dense="true" Disabled="@_loadingResources"
+                       MultiSelectionTextFunc="@(ids => $"{ids.Count()} selected")">
+                @foreach (var plan in _plans)
+                {
+                    <MudSelectItem T="string" Value="@plan.Id">
+                        @plan.Name (@plan.ResourceGroupName)
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudSelect T="MetricDefinition" @bind-Value="_selectedMetric"
+                       Label="Metric" Variant="Variant.Outlined" Dense="true"
+                       ToStringFunc="@(m => m?.DisplayName ?? string.Empty)">
+                @foreach (var m in MetricDefinition.Catalog)
+                {
+                    <MudSelectItem T="MetricDefinition" Value="@m">@m.DisplayName</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudSelect T="string" @bind-Value="_selectedAggregation"
+                       Label="Aggregation" Variant="Variant.Outlined" Dense="true">
+                @foreach (var agg in _selectedMetric?.SupportedAggregations ?? [])
+                {
+                    <MudSelectItem T="string" Value="@agg">@agg</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudText Typo="Typo.caption" Class="mb-1">Time Range</MudText>
+            <MudButtonGroup Size="MudBlazor.Size.Small" Variant="Variant.Outlined">
+                @foreach (var preset in TimeRange.Presets)
+                {
+                    <MudButton OnClick="@(() => _selectedPreset = preset.Label)"
+                               Color="@(_selectedPreset == preset.Label ? MudBlazor.Color.Primary : MudBlazor.Color.Default)">
+                        @preset.Display
+                    </MudButton>
+                }
+            </MudButtonGroup>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="@LoadMetrics"
+                           Disabled="@(_loading || !_selectedPlanIds.Any() || _selectedMetric is null)">
+                    @(_loading ? "Loading…" : "Load Metrics")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Clear"
+                           OnClick="@ClearChart">
+                    Clear
+                </MudButton>
+            </MudStack>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<!-- Chart -->
+@if (_loading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="360px" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+else if (_series.Count > 0)
+{
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudText Typo="Typo.h6" Class="mb-3">
+            @_selectedMetric?.DisplayName — @_selectedAggregation
+            <MudChip T="string" Size="MudBlazor.Size.Small" Class="ml-2"
+                     Text="@(TimeRange.Presets.FirstOrDefault(p => p.Label == _selectedPreset).Display ?? _selectedPreset)" />
+        </MudText>
+        <ApexChart TItem="MetricDataPoint" Options="@_chartOptions" Height="@("350")">
+            @foreach (var s in _series)
+            {
+                <ApexPointSeries TItem="MetricDataPoint"
+                                 Items="@s.DataPoints"
+                                 Name="@s.ResourceName"
+                                 SeriesType="@_seriesType"
+                                 XValue="@(dp => dp.Timestamp.ToLocalTime())"
+                                 YValue="@(dp => (decimal?)GetValue(dp))"
+                                 OrderBy="e => e.X" />
+            }
+        </ApexChart>
+        <MudStack Row="true" Spacing="1" Class="mt-2" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.caption">Chart type:</MudText>
+            <MudToggleGroup T="string" @bind-Value="_chartTypeName" Size="MudBlazor.Size.Small">
+                <MudToggleItem Value="@("Line")" Text="Line" />
+                <MudToggleItem Value="@("Area")" Text="Area" />
+                <MudToggleItem Value="@("Bar")" Text="Bar" />
+            </MudToggleGroup>
+        </MudStack>
+    </MudPaper>
+}
+else if (_hasSearched)
+{
+    <MudPaper Elevation="0" Class="d-flex flex-column align-center justify-center pa-12"
+              Style="border:2px dashed var(--mud-palette-divider);">
+        <MudIcon Icon="@Icons.Material.Filled.BarChart" Size="MudBlazor.Size.Large" Color="MudBlazor.Color.Secondary" />
+        <MudText Typo="Typo.h6" Color="MudBlazor.Color.Secondary" Class="mt-3">
+            No metric data returned for the selected range
+        </MudText>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Elevation="0" Class="d-flex flex-column align-center justify-center pa-12"
+              Style="border:2px dashed var(--mud-palette-divider);">
+        <MudIcon Icon="@Icons.Material.Filled.ShowChart" Size="MudBlazor.Size.Large" Color="MudBlazor.Color.Secondary" />
+        <MudText Typo="Typo.h6" Color="MudBlazor.Color.Secondary" Class="mt-3">
+            Select App Service Plans and a metric, then click Load Metrics
+        </MudText>
+    </MudPaper>
+}
+
+@code {
+    private List<AppServicePlan> _plans = [];
+    private IReadOnlyCollection<string> _selectedPlanIds = [];
+    private MetricDefinition? _selectedMetric = MetricDefinition.Catalog[0];
+    private string _selectedAggregation = MetricDefinition.Catalog[0].SupportedAggregations[0];
+    private string _selectedPreset = "1h";
+    private string _chartTypeName = "Line";
+
+    private List<MetricSeriesDto> _series = [];
+    private bool _loadingResources = true;
+    private bool _loading;
+    private bool _hasSearched;
+    private string? _error;
+
+    private SeriesType _seriesType => _chartTypeName switch
+    {
+        "Area" => SeriesType.Area,
+        "Bar"  => SeriesType.Bar,
+        _      => SeriesType.Line,
+    };
+
+    private ApexChartOptions<MetricDataPoint> _chartOptions = new()
+    {
+        Chart = new Chart { Toolbar = new Toolbar { Show = false } },
+        Xaxis = new XAxis { Type = XAxisType.Datetime },
+        Stroke = new Stroke { Curve = Curve.Smooth, Width = [2] },
+        Tooltip = new Tooltip { X = new TooltipX { Format = "dd MMM HH:mm" } },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _plans = (await ResourceGroupService.GetAppServicePlansAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load App Service Plans: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingResources = false;
+        }
+    }
+
+    private async Task LoadMetrics()
+    {
+        if (!_selectedPlanIds.Any() || _selectedMetric is null) return;
+
+        _loading = true;
+        _hasSearched = true;
+        _error = null;
+        _series = [];
+
+        try
+        {
+            var selectedPlans = _plans
+                .Where(p => _selectedPlanIds.Contains(p.Id))
+                .ToList();
+
+            var timeRange = TimeRange.FromPresetKey(_selectedPreset);
+
+            var result = await MetricsQueryService.GetMetricsForPlansAsync(
+                selectedPlans, _selectedMetric, _selectedAggregation, timeRange);
+
+            _series = result.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load metrics: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ClearChart()
+    {
+        _series = [];
+        _hasSearched = false;
+        _error = null;
+    }
+
+    private double? GetValue(MetricDataPoint dp) => _selectedAggregation switch
+    {
+        "Maximum" => dp.Maximum,
+        "Minimum" => dp.Minimum,
+        "Total"   => dp.Total,
+        _         => dp.Average,
+    };
+}

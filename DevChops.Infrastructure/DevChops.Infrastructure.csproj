@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DevChops.Domain\DevChops.Domain.csproj" />
+    <ProjectReference Include="..\DevChops.Application\DevChops.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.20.0" />
+    <PackageReference Include="Azure.Monitor.Query" Version="1.7.1" />
+    <PackageReference Include="Azure.ResourceManager" Version="1.14.0" />
+    <PackageReference Include="Azure.ResourceManager.AppService" Version="1.4.1" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

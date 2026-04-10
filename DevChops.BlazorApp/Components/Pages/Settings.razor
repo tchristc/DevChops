@@ -1,0 +1,155 @@
+@page "/settings"
+@attribute [Authorize]
+@inject IUserPreferenceService UserPreferenceService
+@inject ISavedFilterService SavedFilterService
+@inject ResourceGroupService ResourceGroupService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@using Color = MudBlazor.Color;
+
+<PageTitle>Settings – DevChops</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Settings</MudText>
+
+@if (_loading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+}
+else
+{
+    <MudGrid>
+        <!-- Preferences -->
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Default Preferences</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudSelect T="string" @bind-Value="_pref!.DefaultSubscriptionId"
+                               Label="Default Subscription" Variant="Variant.Outlined"
+                               Dense="true" Class="mb-3" Clearable="true">
+                        @foreach (var sub in _subscriptions)
+                        {
+                            <MudSelectItem T="string" Value="@sub">@sub</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudSelect T="string" @bind-Value="_pref.DefaultTimeRangePreset"
+                               Label="Default Time Range" Variant="Variant.Outlined" Dense="true">
+                        @foreach (var p in TimeRange.Presets)
+                        {
+                            <MudSelectItem T="string" Value="@p.Label">@p.Display</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="@SavePreferences">
+                        Save Preferences
+                    </MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+
+        <!-- Saved Filters -->
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Saved Filters</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_savedFilters.Count == 0)
+                    {
+                        <MudText Color="Color.Secondary" Typo="Typo.body2">
+                            No saved filters yet. Save a filter from the Log Viewer.
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudList T="SavedFilter" Dense="true">
+                            @foreach (var f in _savedFilters)
+                            {
+                                <MudListItem T="SavedFilter">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                        <MudStack Spacing="0">
+                                            <MudText Typo="Typo.body2">@f.Name</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @f.TimeRangePreset · @(f.FreeText ?? "no text filter")
+                                            </MudText>
+                                        </MudStack>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                       Size="MudBlazor.Size.Small" Color="Color.Error"
+                                                       OnClick="@(() => DeleteFilter(f))" />
+                                    </MudStack>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Info -->
+        <MudItem xs="12">
+            <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+                Preferences and saved filters are stored in memory for this session.
+                Database persistence will be added in a future release.
+            </MudAlert>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private UserPreference? _pref;
+    private List<SavedFilter> _savedFilters = [];
+    private List<string> _subscriptions = [];
+    private bool _loading = true;
+    private string _userId = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _userId = await GetUserIdAsync();
+            _pref = await UserPreferenceService.GetOrCreateAsync(_userId);
+            _savedFilters = (await SavedFilterService.GetForUserAsync(_userId)).ToList();
+
+            var groups = await ResourceGroupService.GetResourceGroupsAsync();
+            _subscriptions = groups.Select(g => g.SubscriptionId).Distinct().ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load settings: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SavePreferences()
+    {
+        if (_pref is null) return;
+        await UserPreferenceService.SaveAsync(_pref);
+        Snackbar.Add("Preferences saved", Severity.Success);
+    }
+
+    private async Task DeleteFilter(SavedFilter filter)
+    {
+        await SavedFilterService.DeleteAsync(_userId, filter.Id);
+        _savedFilters = (await SavedFilterService.GetForUserAsync(_userId)).ToList();
+        Snackbar.Add("Filter deleted", Severity.Info);
+    }
+
+    private async Task<string> GetUserIdAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        return auth.User.FindFirst(
+                   "http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+               ?? auth.User.Identity?.Name
+               ?? "anonymous";
+    }
+}

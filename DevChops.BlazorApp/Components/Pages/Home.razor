@@ -1,7 +1,125 @@
 ﻿@page "/"
+@attribute [Authorize]
+@inject ResourceGroupService ResourceGroupService
+@inject ISnackbar Snackbar
+@using Color = MudBlazor.Color;
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Dashboard – DevChops</PageTitle>
 
-<h1>Hello, world!</h1>
+<MudText Typo="Typo.h4" GutterBottom="true">Dashboard</MudText>
 
-Welcome to your new app.
+@if (_loading)
+{
+    <MudGrid>
+        @for (int i = 0; i < 4; i++)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="2">
+                <MudCardContent>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Subscriptions</MudText>
+                    <MudText Typo="Typo.h3">@_subscriptionCount</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="2">
+                <MudCardContent>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Resource Groups</MudText>
+                    <MudText Typo="Typo.h3">@_resourceGroups.Count</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Href="/logs" Variant="Variant.Text" Color="Color.Primary">View Logs</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="2">
+                <MudCardContent>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">App Service Plans</MudText>
+                    <MudText Typo="Typo.h3">@_plans.Count</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Href="/metrics" Variant="Variant.Text" Color="Color.Primary">View Metrics</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="2">
+                <MudCardContent>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">App Insights Resources</MudText>
+                    <MudText Typo="Typo.h3">@_components.Count</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Href="/logs" Variant="Variant.Text" Color="Color.Primary">Query Logs</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mt-8 mb-3">Quick Actions</MudText>
+    <MudStack Row="true" Spacing="2">
+        <MudButton Href="/logs" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.ManageSearch">
+            Open Log Viewer
+        </MudButton>
+        <MudButton Href="/metrics" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.ShowChart">
+            Open Metrics Dashboard
+        </MudButton>
+        <MudButton OnClick="@Refresh" Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Refresh">
+            Refresh
+        </MudButton>
+    </MudStack>
+}
+
+@code {
+    private List<ResourceGroup> _resourceGroups = [];
+    private List<AppServicePlan> _plans = [];
+    private List<AppInsightsComponent> _components = [];
+    private int _subscriptionCount;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task Refresh()
+    {
+        ResourceGroupService.ClearCache();
+        _loading = true;
+        _error = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _resourceGroups = (await ResourceGroupService.GetResourceGroupsAsync()).ToList();
+            _plans          = (await ResourceGroupService.GetAppServicePlansAsync()).ToList();
+            _components     = (await ResourceGroupService.GetAppInsightsComponentsAsync()).ToList();
+            _subscriptionCount = _resourceGroups.Select(rg => rg.SubscriptionId).Distinct().Count();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load Azure resources: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

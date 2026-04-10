@@ -1,9 +1,45 @@
 ﻿@inherits LayoutComponentBase
 
-@Body
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
-</div>
+<MudLayout>
+    <MudAppBar Elevation="1" Color="MudBlazor.Color.Primary">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                       Color="MudBlazor.Color.Inherit" Edge="Edge.Start"
+                       OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+        <MudText Typo="Typo.h6" Class="ml-2">DevChops</MudText>
+        <MudSpacer />
+        <AuthorizeView>
+            <Authorized>
+                <MudText Class="mr-3" Typo="Typo.body2">@context.User.Identity?.Name</MudText>
+                <MudButton Href="/MicrosoftIdentity/Account/SignOut?post_logout_redirect_uri=/"
+                           Variant="Variant.Outlined" Color="MudBlazor.Color.Inherit" Size="MudBlazor.Size.Small">
+                    Sign Out
+                </MudButton>
+            </Authorized>
+            <NotAuthorized>
+                <MudButton Href="/MicrosoftIdentity/Account/SignIn"
+                           Variant="Variant.Outlined" Color="MudBlazor.Color.Inherit" Size="MudBlazor.Size.Small">
+                    Sign In
+                </MudButton>
+            </NotAuthorized>
+        </AuthorizeView>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="2" ClipMode="DrawerClipMode.Always">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-6">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+}

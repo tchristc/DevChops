@@ -1,6 +1,10 @@
 <Solution>
   <Folder Name="/Solution Items/">
     <File Path="spec.md" />
+    <File Path="PLAN.md" />
   </Folder>
+  <Project Path="DevChops.Domain/DevChops.Domain.csproj" />
+  <Project Path="DevChops.Application/DevChops.Application.csproj" />
+  <Project Path="DevChops.Infrastructure/DevChops.Infrastructure.csproj" />
   <Project Path="DevChops.BlazorApp/DevChops.BlazorApp.csproj" />
 </Solution>
